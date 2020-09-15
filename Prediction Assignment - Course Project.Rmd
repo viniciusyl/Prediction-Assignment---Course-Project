@@ -1,0 +1,209 @@
+---
+title: "Prediction Assignment - Course Project"
+author: "Vinicius Lago"
+date: "15/09/2020"
+output: html_document
+mainfont: Arial
+geometry: margin=1in
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+## Introduction  
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.  
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.  
+
+## Loading and cleaning data
+
+First, let´s load the two files with our training and testing dataset.  
+
+```{r load data}
+
+# Load training and testing data
+training_set <- read.csv("./data/training.csv", na.strings=c("NA","#DIV/0!",""))
+testing_set <- read.csv("./data/testing.csv", na.strings=c("NA","#DIV/0!",""))
+
+```
+
+Now, let´s clean our training data, removing the columns that we will not use and the columns with high percent NAs values.
+
+```{r clean data}
+
+# Drop not useful variables
+clean <- grep("name|timestamp|window|X", colnames(training_set), value=F) 
+training_set_clean <- training_set[,-clean]
+
+# Drop variables with high percent NAs (More than 50%)
+NArate <- apply(training_set_clean, 2, function(x) sum(is.na(x)))/nrow(training_set_clean)
+training_set_clean <- training_set_clean[!(NArate>0.50)]
+training_set = training_set_clean
+
+```
+
+The next step consists in split training data in two smaller datasets (75%-25%). The bigger one will be used to train the models and the other one will be used to test the models.
+
+```{r split data}
+
+# Split training dataset in train and test data
+set.seed(123)
+ind = sample(2, nrow(training_set), replace = TRUE, prob = c(0.75, 0.25))
+train_training_set = training_set[ind ==1, ]
+test_training_set = training_set[ind ==2, ]
+
+```
+
+## Explore train_training_set data
+
+Let´s see some statistics for train_training_set data.  
+
+Our train data contains 53 variables and 14776 observations:  
+
+```{r dim}
+
+dim(train_training_set)
+
+```
+
+The main variable of our study (the one we will try to predict) is **classe**. In the next graph we can visualize the distribution of classe in the training data.
+
+```{r graph classe}
+
+plot(as.factor(train_training_set$classe),
+     col = "red",
+     main = "Distribution of classes in train_training_set")
+
+```
+
+
+## Fitting the models
+
+We will fitting three different models to compare and choose the best. We will fitting a model with **Decision tree**, **Ranom Forest** and **GLM**. 
+
+To train the models we will use our train_training_set and to validate them we will use the test_training_set. In the moment of training, we will using the method of cross validation with 3 folds to all models. 
+
+### Decision Tree
+
+First, we will fit the model:  
+
+```{r decision tree fit}
+
+library(caret)
+model_tree = train(as.factor(classe) ~ .,
+                   data = train_training_set,
+                   method = "rpart",
+                   trControl = trainControl(method = "cv", number = 3))
+
+
+```
+
+Now, we will predict the test_training_set and analyze the summary statistics.  
+
+```{r decision tree results}
+
+pred_tree = predict(model_tree, test_training_set)
+confusionMatrix(as.factor(test_training_set$classe), as.factor(pred_tree))
+cdt = confusionMatrix(as.factor(test_training_set$classe), as.factor(pred_tree))
+
+```
+
+The accuracy for Decision Tree model is: `r cdt[["overall"]][["Accuracy"]]`.  
+
+### Random Forest
+
+First, we will fit the model:  
+
+```{r random forest fit}
+
+model_rf = train(as.factor(classe) ~ .,
+                 method = "rf",
+                 data = train_training_set,
+                 trControl = trainControl(method = "cv", number = 3))
+
+
+```
+
+Now, we will predict the test_training_set and analyze the summary statistics.  
+
+```{r random forest results}
+
+pred_rf = predict(model_rf, test_training_set)
+confusionMatrix(as.factor(test_training_set$classe), as.factor(pred_rf))
+crf = confusionMatrix(as.factor(test_training_set$classe), as.factor(pred_rf))
+
+```
+
+The accuracy for Random Forest model is: `r crf[["overall"]][["Accuracy"]]`.  
+
+### GLM
+
+First, we will fit the model:  
+
+```{r glm fit}
+
+model_glm = train(as.factor(classe) ~ .,
+                  data = train_training_set,
+                  trControl = trainControl(method = "cv", number = 3),
+                  method='multinom')
+
+
+```
+
+Now, we will predict the test_training_set and analyze the summary statistics.  
+
+```{r glm results}
+
+pred_glm = predict(model_glm, test_training_set)
+confusionMatrix(as.factor(test_training_set$classe), as.factor(pred_glm))
+cglm = confusionMatrix(as.factor(test_training_set$classe), as.factor(pred_glm))
+
+```
+
+The accuracy for GLM model is: `r cglm[["overall"]][["Accuracy"]]`.  
+
+## Model Selection
+
+As we can saw, the Random Forest model had the best performance in Accuracy and other measures. So, the Random Forest model was chosen to be our model.  
+
+## Importance of variables
+
+Before predict the final test set, let´s analyze the importance of variables for our chosen model and get a better understand of it.  
+
+```{r importance variables}
+
+# Importance of variables
+VarImportance = varImp(model_rf)
+plot(VarImportance, main = "Most relevant variables", top = 10)
+
+```
+
+
+## Making prediction for test set
+
+In our last step of this work, let´s make the prediction for test set.  
+
+```{r}
+# Prediction to testing test
+pred_testing_set = predict(model_rf, testing_set)
+pred_testing_set
+
+```
+
+The prediction are: `r pred_testing_set`.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
